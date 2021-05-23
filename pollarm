@@ -1,0 +1,49 @@
+#!/bin/bash
+
+execute_selection(){
+	# run the command
+	# update the hashes
+		# if they're different, run the subcommands
+	echo;
+}
+
+init(){
+	sqlite3 ~/.pollarm.db "create table if not exists commands (id INTEGER PRIMARY KEY,cmd,last_hash,next_update_timestamp,pins,run_interval,UNIQUE(cmd));"
+}
+
+update(){
+	# select * from commands where next_update_timestamp < strftime('%s','now');
+	# for each selection
+		# execute_selection(selection)
+	echo;
+}
+
+add(){
+	#check to see if the command already exists
+	echo 1
+	sqlite3 ~/.pollarm.db "insert or ignore into commands(cmd,run_interval) VALUES(\"$2\",0)"
+	echo 2
+	pins=$(sqlite3 ~/.pollarm.db "select id from commands where cmd = \"$2\";")
+	#add the command and its pins
+	sqlite3 ~/.pollarm.db "insert into commands(cmd,pins,run_interval) VALUES(\"$1\",$pins,$((60*60)))"
+	echo 3
+}
+
+list(){
+	sqlite3 ~/.pollarm.db "select * from commands;"
+}
+
+main(){
+	init
+	case $1 in
+		add)
+			add "$2" "$3"
+		;;
+		list)
+			list
+		;;
+	esac
+	update
+}
+
+main "$@"
