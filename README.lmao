@@ -1,0 +1,4 @@
+pollarm runs commands when the output of other commands changes.
+ $ pollarm -e "apt update" -m "echo 'stuff happened' | notify"
+
+
