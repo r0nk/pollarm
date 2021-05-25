@@ -1,36 +1,41 @@
 #!/bin/bash
+#TODO support multiple pins for a single entry
 
-execute_selection(){
-	# run the command
-	# update the hashes
-		# if they're different, run the subcommands
-	echo;
-}
+dbp=~/.pollarm.db
 
 init(){
-	sqlite3 ~/.pollarm.db "create table if not exists commands (id INTEGER PRIMARY KEY,cmd,last_hash,next_update_timestamp,pins,run_interval,UNIQUE(cmd));"
+	sqlite3 $dbp "create table if not exists commands (id INTEGER PRIMARY KEY,cmd,last_hash,next_update_timestamp,pin,run_interval,UNIQUE(cmd));"
 }
 
 update(){
-	# select * from commands where next_update_timestamp < strftime('%s','now');
-	# for each selection
-		# execute_selection(selection)
-	echo;
+	sqlite3 $dbp "select id from commands where next_update_timestamp < strftime('%s','now');" |\
+	while read id
+	do
+		new_hash=$(sqlite3 $dbp "select cmd from commands where id = $id" | bash | md5sum | awk '{print $1}')
+		old_hash=$(sqlite3 $dbp "select last_hash from commands where id = $id")
+		if [ "$old_hash" = "$new_hash" ]; then
+			pin=$(sqlite3 $dbp "select pin from commands where id = $id")
+			sqlite3 $dbp "select cmd from commands where id = $pin" | bash &
+		fi
+		run_interval=$(sqlite3 $dbp "select run_interval from commands where id = $id")
+		sqlite3 $dbp "update commands set last_hash = '$new_hash' where id = $id"
+		#sqlite3 $dbp "update commands set next_update_timestamp = next_update_timestamp + $run_interval where id = $id"
+	done
 }
 
 add(){
-	#check to see if the command already exists
-	echo 1
-	sqlite3 ~/.pollarm.db "insert or ignore into commands(cmd,run_interval) VALUES(\"$2\",0)"
-	echo 2
-	pins=$(sqlite3 ~/.pollarm.db "select id from commands where cmd = \"$2\";")
-	#add the command and its pins
-	sqlite3 ~/.pollarm.db "insert into commands(cmd,pins,run_interval) VALUES(\"$1\",$pins,$((60*60)))"
-	echo 3
+	sqlite3 $dbp "insert or ignore into commands(cmd,run_interval) VALUES(\"$2\",0)" #insert pin command
+	pin=$(sqlite3 $dbp "select id from commands where cmd = \"$2\";")
+	sqlite3 $dbp "insert or ignore into commands(cmd,pin,next_update_timestamp,run_interval) VALUES(\"$1\",$pin,strftime('%s','now'),$((60*60)))"
 }
 
 list(){
-	sqlite3 ~/.pollarm.db "select * from commands;"
+	sqlite3 $dbp "select pin from commands where pin is not NULL" |\
+	while read pin
+	do
+		sqlite3 $dbp "select cmd from commands where pin = $pin union select cmd from commands where id = $pin"
+		echo
+	done
 }
 
 main(){
