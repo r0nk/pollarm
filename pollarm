@@ -8,33 +8,46 @@ init(){
 }
 
 update(){
-	sqlite3 $dbp "select id from commands where next_update_timestamp < strftime('%s','now');" |\
+	sqlite3 $dbp "select id from commands where 0 > (next_update_timestamp - strftime('%s','now'));" |\
 	while read id
 	do
 		new_hash=$(sqlite3 $dbp "select cmd from commands where id = $id" | bash | md5sum | awk '{print $1}')
 		old_hash=$(sqlite3 $dbp "select last_hash from commands where id = $id")
-		if [ "$old_hash" = "$new_hash" ]; then
+		if [ "$old_hash" != "$new_hash" ]; then
 			pin=$(sqlite3 $dbp "select pin from commands where id = $id")
 			sqlite3 $dbp "select cmd from commands where id = $pin" | bash &
 		fi
 		run_interval=$(sqlite3 $dbp "select run_interval from commands where id = $id")
 		sqlite3 $dbp "update commands set last_hash = '$new_hash' where id = $id"
-		#sqlite3 $dbp "update commands set next_update_timestamp = next_update_timestamp + $run_interval where id = $id"
+		sqlite3 $dbp "update commands set next_update_timestamp = next_update_timestamp + $run_interval where id = $id"
 	done
 }
 
 add(){
+	timeframe=$3
+	if [ -z "$timeframe" ]
+	then
+		timeframe=60 #default to once an hour
+	fi
 	sqlite3 $dbp "insert or ignore into commands(cmd,run_interval) VALUES(\"$2\",0)" #insert pin command
 	pin=$(sqlite3 $dbp "select id from commands where cmd = \"$2\";")
-	sqlite3 $dbp "insert or ignore into commands(cmd,pin,next_update_timestamp,run_interval) VALUES(\"$1\",$pin,strftime('%s','now'),$((60*60)))"
+	sqlite3 $dbp "insert or ignore into commands(cmd,pin,next_update_timestamp,run_interval) VALUES(\"$1\",$pin,strftime('%s','now'),$(($timeframe*60)))"
 }
 
 list(){
-	sqlite3 $dbp "select pin from commands where pin is not NULL" |\
-	while read pin
+	sqlite3 $dbp "select * from commands"
+}
+
+dae(){
+	if pidof -x "pollarm" -o %PPID >/dev/null
+	then
+		echo "An instance of pollarm is already running."
+		return
+	fi
+	while true
 	do
-		sqlite3 $dbp "select cmd from commands where pin = $pin union select cmd from commands where id = $pin"
-		echo
+		update
+		sleep 60
 	done
 }
 
@@ -42,13 +55,15 @@ main(){
 	init
 	case $1 in
 		add)
-			add "$2" "$3"
+			add "$2" "$3" "$4"
 		;;
 		list)
 			list
 		;;
+		daemon)
+			dae & &>/dev/null
+		;;
 	esac
-	update
 }
 
 main "$@"
